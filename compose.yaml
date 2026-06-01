@@ -1,0 +1,12 @@
+services:
+  testdelta:
+    build: .
+    container_name: test_delta 
+
+    env_file:
+      - .env
+
+    ports:
+      - "8000:8000"
+
+    restart: always
