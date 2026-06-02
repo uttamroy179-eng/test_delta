@@ -679,7 +679,7 @@ def home():
 if __name__ == "__main__":
     uvicorn.run(
         app,
-        host="0.0.0.0",
+        host="0.0.0.0:$PORT",
         port=8000,
         reload=False,
         log_level="info",
