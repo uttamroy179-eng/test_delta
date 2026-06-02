@@ -14,32 +14,24 @@ from typing import Optional, Dict, Any
 # CREDENTIALS & CONFIG
 # -----------------------------------------------
 
+from pathlib import Path
+from dotenv import load_dotenv
+import os
+
 project_root = Path(__file__).parent.parent
 env_path = project_root / ".env"
 
-if not env_path.exists():
-    raise FileNotFoundError(
-        f".env file not found at: {env_path}\n"
-        f"Please create a .env file in the project root with:\n"
-        f"API_KEY=your_api_key\n"
-        f"API_SECRET=your_api_secret"
-    )
+# Load .env if it exists (local development)
+if env_path.exists():
+    load_dotenv(env_path)
 
-load_dotenv(env_path)
+API_KEY = os.getenv("API_KEY")
+API_SECRET = os.getenv("API_SECRET")
 
-_api_key = os.getenv("API_KEY")
-_api_secret = os.getenv("API_SECRET")
-
-if not _api_key or not _api_secret:
+if not API_KEY or not API_SECRET:
     raise ValueError(
-        f"Credentials not loaded from {env_path}.\n"
-        f"API_KEY: {'set' if _api_key else 'missing'}, "
-        f"API_SECRET: {'set' if _api_secret else 'missing'}"
+        "Missing API_KEY or API_SECRET environment variables."
     )
-
-# Explicitly typed as str
-API_KEY: str = _api_key
-API_SECRET: str = _api_secret
 
 BASE_URL = "https://api.india.delta.exchange"
 
