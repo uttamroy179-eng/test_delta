@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import httpx
 import uvicorn
+import os
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 import asyncio
@@ -14,8 +15,8 @@ from contextlib import asynccontextmanager
 from app.socket_manager import manager
 from app.core.position_monitor import monitor_positions
 from app.data_fetcher import fetch_ohlc, fetch_ohlc_multi_timeframe
-from engine.strategy  import generate_signal, calculate_sl_tp, check_pyramid_trigger
-from engine.executor     import (
+from engine.strategy import generate_signal, calculate_sl_tp, check_pyramid_trigger
+from engine.executor import (
     place_order, place_pyramid_order, scale_out,
     close_position, fetch_open_positions, fetch_wallet_balance,
 )
@@ -454,18 +455,22 @@ async def lifespan(app: FastAPI):
     print(f"[Main] Auto trading: {AUTO_TRADING_ENABLED}")
     print(f"[Main] Timeframes: {MTF_TIMEFRAMES} | Primary: {PRIMARY_TIMEFRAME}")
 
-    await fetch_market_data_fast()
+    asyncio.create_task(fetch_market_data_fast())
 
     # Retry up to 5 times, then give clear error
     MAX_BALANCE_RETRIES = 5
     retry_count = 0
+    balance = None
 
     while retry_count < MAX_BALANCE_RETRIES:
-        balance = await fetch_wallet_balance()
-        if balance is not None:
-            daily_tracker = DailyLossTracker(starting_balance=balance)
-            print(f"[Main] Daily loss tracker initialized. Starting balance: {balance:.2f} USD")
-            break
+        try:
+            balance = await fetch_wallet_balance()
+            if balance:
+                daily_tracker = DailyLossTracker(balance)
+                break
+            print("Wallet balance unavailable, continuing startup")
+        except Exception as e:
+            print(f"Wallet initialization error: {e}")
 
         retry_count += 1
         print(f"[Main] Wallet balance unavailable (attempt {retry_count}/{MAX_BALANCE_RETRIES}).")
@@ -490,13 +495,14 @@ async def lifespan(app: FastAPI):
     _background_tasks.update({cache_task, trading_task, monitor_task})
     print("[Main] All background tasks started.")
 
-    yield
-
-    print("[Main] Shutting down — cancelling background tasks...")
-    for task in _background_tasks:
-        task.cancel()
-    await asyncio.gather(*_background_tasks, return_exceptions=True)
-    print("[Main] All background tasks stopped.")
+    try:
+        yield
+    finally:
+        print("[Main] Shutting down — cancelling background tasks...")
+        for task in _background_tasks:
+            task.cancel()
+        await asyncio.gather(*_background_tasks, return_exceptions=True)
+        print("[Main] All background tasks stopped.")
 
 
 app = FastAPI(
@@ -677,10 +683,7 @@ def home():
 # ============================================
 
 if __name__ == "__main__":
-    uvicorn.run(
-        app,
-        host="0.0.0.0:$PORT",
-        port=8000,
-        reload=False,
-        log_level="info",
-    )
+    uvicorn.run (
+        "main:app",
+        host="0.0.0.0",
+        port=int(os.getenv("PORT",8000 )))
