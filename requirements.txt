@@ -8,8 +8,8 @@ gunicorn==21.2.0
 python-multipart==0.0.6
 
 # Data Processing
-pandas==2.1.1
-numpy==1.26.2
+pandas>=2.3.0
+numpy>=2.3.0
 
 # HTTP Client
 httpx==0.25.1
