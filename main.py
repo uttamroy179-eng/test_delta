@@ -15,7 +15,7 @@ from contextlib import asynccontextmanager
 from app.socket_manager import manager
 from app.core.position_monitor import monitor_positions
 from app.data_fetcher import fetch_ohlc, fetch_ohlc_multi_timeframe
-from engine.strategy import generate_signal, calculate_sl_tp, check_pyramid_trigger
+from engine.strategy import generate_signal,calculate_sl_tp,check_pyramid_trigger
 from engine.executor import (
     place_order, place_pyramid_order, scale_out,
     close_position, fetch_open_positions, fetch_wallet_balance,
@@ -455,6 +455,7 @@ async def lifespan(app: FastAPI):
     print(f"[Main] Auto trading: {AUTO_TRADING_ENABLED}")
     print(f"[Main] Timeframes: {MTF_TIMEFRAMES} | Primary: {PRIMARY_TIMEFRAME}")
 
+    # start a background task to warm the market data cache
     asyncio.create_task(fetch_market_data_fast())
 
     # Retry up to 5 times, then give clear error
@@ -466,29 +467,30 @@ async def lifespan(app: FastAPI):
         try:
             balance = await fetch_wallet_balance()
             if balance:
-                daily_tracker = DailyLossTracker(balance)
+                daily_tracker = DailyLossTracker(starting_balance=balance)
+                print(f"Daily tracker initialized with balance: {balance}")
                 break
-            print("Wallet balance unavailable, continuing startup")
+            else:
+                print("Wallet balance unavailable. Retrying...")
         except Exception as e:
             print(f"Wallet initialization error: {e}")
-
         retry_count += 1
-        print(f"[Main] Wallet balance unavailable (attempt {retry_count}/{MAX_BALANCE_RETRIES}).")
-        if retry_count < MAX_BALANCE_RETRIES:
-            await asyncio.sleep(10)
-        else:
-            current_ip = await get_current_ip()
-            print("\n" + "="*60)
-            print("❌ CRITICAL: Could not fetch wallet balance after 5 attempts.")
-            print("👉 Most likely cause: API key IP not whitelisted.")
-            print("👉 Solution: Log into Delta Exchange → API Keys → Add your current IP:")
-            print(f"   {current_ip}")
-            print("👉 Or disable IP whitelisting for this API key (less secure).")
-            print("👉 Then restart the bot.")
-            print("="*60 + "\n")
-            raise RuntimeError("Wallet balance unavailable – fix API key IP whitelist")
+        await asyncio.sleep(2)
 
-    cache_task   = asyncio.create_task(background_cache_refresh())
+    if not daily_tracker:
+        current_ip = await get_current_ip()
+        print("\n" + "="*60)
+        print("❌ CRITICAL: Could not fetch wallet balance after 5 attempts.")
+        print("👉 Most likely cause: API key IP not whitelisted.")
+        print("👉 Solution: Log into Delta Exchange → API Keys → Add your current IP:")
+        print(f"   {current_ip}")
+        print("👉 Or disable IP whitelisting for this API key (less secure).")
+        print("👉 Then restart the bot.")
+        print("="*60 + "\n")
+        raise RuntimeError("Wallet balance unavailable – fix API key IP whitelist")
+
+    # start background tasks
+    cache_task = asyncio.create_task(background_cache_refresh())
     trading_task = asyncio.create_task(auto_trading_loop())
     monitor_task = asyncio.create_task(position_monitor_loop())
 
